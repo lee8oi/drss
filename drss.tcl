@@ -12,9 +12,6 @@
 #               .rss <add|del|list> [name:#chan] - from partyline     #
 #                                                                     #
 #######################################################################
-
-package require Tcl 8.3
-package require eggdrop 1.6
 package require http 2.0
 
 namespace eval rssnews {
@@ -22,7 +19,7 @@ namespace eval rssnews {
 # set your feed(s) sources here: feed name, channel, poll frequency in mins, feed URL
 #
 #set feeds(osnews:#chan1) {17 http://www.osnews.com/files/recent.rdf}
-#set feeds(google:#chan2) {11 http://news.google.com/news?ned=us&topic=h&output=rss}
+set feeds(google:#dukelovett) {5 http://news.google.com/news?ned=us&topic=h&output=rss}
 #
 # if you have to use password-protected feed, set it up like this:
 #
@@ -138,27 +135,30 @@ proc process {data chanfeed} {
 	set idx 1; set count 0
 	scan $chanfeed {%[^:]:%s} feed chan
 	set news($chanfeed) {}; set source($chanfeed) ""
-	if {[regexp {(?i)<title>(.*?)</title>} $data -> foo]} {
+	set data [webbydescdecode $data]
+	if {[regexp {<title>(.*?)</title>} $data -> foo]} {
 		append source($chanfeed) $foo
 	}
-	if {[regexp {(?i)<description>(.*?)</description>} $data -> foo]} {
+	if {[regexp {<description>(.*?)</description>} $data -> foo]} {
 		append source($chanfeed) " | $foo"
 	}
 	set infoline $source($chanfeed)
 	regsub -all {(?i)<items.*?>.*?</items>} $data {} data
 	foreach {foo item} [regexp -all -inline {(?i)<item.*?>(.*?)</item>} $data] {
-		regexp {(?i)<title.*?>(.*?)</title>}  $item -> title
-		regexp {(?i)<link.*?>(.*?)</link}     $item -> link
-		regexp {(?i)<desc.*?>(.*?)</desc.*?>} $item -> descr
+		regexp {(?i)<title.*?>(.*?)</title>}  $item titsub1 title 
+		regexp {(?i)<link>(.*?)</link>}     $item linsub1 link
+		regexp {(?i)<description>(.*?)</description} $item dessub1 descr
+		set descr [unhtml $descr]; set title [unhtml $title]; set link [unhtml $link]
 		if {![info exists title]} {set title "(none)"}
 		if {![info exists link]}  {set link  "(none)"}
 		if {![info exists descr]} {set descr "(none)"}
-		strip title link descr
 		if {[info exists hash($chanfeed)]} {
 		if {[lsearch -exact $hash($chanfeed) [md5 $title]] == -1 && [botonchan $chan]} {
+			
 			if {![info exists header]} {
-				if {$infoline == ""} {set header $feed} {set header $infoline} 
-				puthelp "privmsg $chan :\002Breaking news\002 from $header!"
+				if {$infoline == ""} {set header $feed} {set header $infoline}
+				set header [unhtml $header]
+				puthelp "privmsg $chan :\002Breaking news\002: $header!"
 			}
 			if {$count < $maxnew} {
 				puthelp "privmsg $chan :($idx) $title"
@@ -177,27 +177,6 @@ proc process {data chanfeed} {
 		puthelp "privmsg $chan :...and $count more $indices" 
 	}
 	set hash($chanfeed) $hashes
-}
-
-proc strip {args} {
-	variable html
-	foreach a $args {
-		upvar $a x
-		set amp {&amp; &}
-		set x [string map $amp $x]
-		set x [string map $html $x]
-		while {[regexp -indices {(&#[0-9]{1,3};)} $x -> idxs]} {
-			set b [lindex $idxs 0]; set e [lindex $idxs 1]
-			set num [string range $x [expr {$b+2}] [expr {$e-1}]]
-			if {$num < 256} {
-				set x [string replace $x $b $e [format %c $num]]
-			}
-		}
-		regexp {(?i)<!\[CDATA\[(.*?)\]\]>}   $x ->    x
-		regsub -all {(?i)</t[dr]><t[dr].*?>} $x { | } x
-		regsub -all {(?i)(<p>|<br>|\n)}      $x { }   x
-		regsub -all {<[^<]+?>}               $x {}    x
-	}
 }
 
 proc rss {hand idx text} {
@@ -294,6 +273,7 @@ proc news {nick uhost hand chan text} {
 		} {
 			set title [lindex $feeds($feed:$chan) 1]
 		}
+		set title [unhtml $title]
 		puthelp "notice $nick :News source: \002$title\002"
 		foreach item $news($feed:$chan) {
 			puthelp "notice $nick :($idx) [lindex $item 0]"
@@ -340,33 +320,87 @@ proc b64en str {
 	} $bits]$tail
 }
 
-variable html {
-	&quot;     \x22  &apos;     \x27  &amp;      \x26  &lt;       \x3C
-	&gt;       \x3E  &nbsp;     \x20  &iexcl;    \xA1  &curren;   \xA4
-	&cent;     \xA2  &pound;    \xA3  &yen;      \xA5  &brvbar;   \xA6
-	&sect;     \xA7  &uml;      \xA8  &copy;     \xA9  &ordf;     \xAA
-	&laquo;    \xAB  &not;      \xAC  &shy;      \xAD  &reg;      \xAE
-	&macr;     \xAF  &deg;      \xB0  &plusmn;   \xB1  &sup2;     \xB2
-	&sup3;     \xB3  &acute;    \xB4  &micro;    \xB5  &para;     \xB6
-	&middot;   \xB7  &cedil;    \xB8  &sup1;     \xB9  &ordm;     \xBA
-	&raquo;    \xBB  &frac14;   \xBC  &frac12;   \xBD  &frac34;   \xBE
-	&iquest;   \xBF  &times;    \xD7  &divide;   \xF7  &Agrave;   \xC0
-	&Aacute;   \xC1  &Acirc;    \xC2  &Atilde;   \xC3  &Auml;     \xC4
-	&Aring;    \xC5  &AElig;    \xC6  &Ccedil;   \xC7  &Egrave;   \xC8
-	&Eacute;   \xC9  &Ecirc;    \xCA  &Euml;     \xCB  &Igrave;   \xCC
-	&Iacute;   \xCD  &Icirc;    \xCE  &Iuml;     \xCF  &ETH;      \xD0
-	&Ntilde;   \xD1  &Ograve;   \xD2  &Oacute;   \xD3  &Ocirc;    \xD4
-	&Otilde;   \xD5  &Ouml;     \xD6  &Oslash;   \xD8  &Ugrave;   \xD9
-	&Uacute;   \xDA  &Ucirc;    \xDB  &Uuml;     \xDC  &Yacute;   \xDD
-	&THORN;    \xDE  &szlig;    \xDF  &agrave;   \xE0  &aacute;   \xE1
-	&acirc;    \xE2  &atilde;   \xE3  &auml;     \xE4  &aring;    \xE5
-	&aelig;    \xE6  &ccedil;   \xE7  &egrave;   \xE8  &eacute;   \xE9
-	&ecirc;    \xEA  &euml;     \xEB  &igrave;   \xEC  &iacute;   \xED
-	&icirc;    \xEE  &iuml;     \xEF  &eth;      \xF0  &ntilde;   \xF1
-	&ograve;   \xF2  &oacute;   \xF3  &ocirc;    \xF4  &otilde;   \xF5
-	&ouml;     \xF6  &oslash;   \xF8  &ugrave;   \xF9  &uacute;   \xFA
-	&ucirc;    \xFB  &uuml;     \xFC  &yacute;   \xFD  &thorn;    \xFE
-	&yuml;     \xFF
+################################################################################
+# Unhtml & webby descdecode borrowed from webby script                         #
+################################################################################
+proc unhtml {text} {
+  regsub -all "(?:<b>|</b>|<b />|<em>|</em>|<strong>|</strong>)" $text "\002" text
+  regsub -all "(?:<u>|</u>|<u />)" $text "\037" text
+  regsub -all "(?:<br>|<br/>|<br />)" $text ". " text
+  regsub -all "<script.*?>.*?</script>" $text "" text
+  regsub -all "<style.*?>.*?</style>" $text "" text
+  regsub -all -- {<.*?>} $text " " text
+  while {[string match "*  *" $text]} { regsub -all "  " $text " " text }
+  return [string trim $text]
 }
-
+proc webbydescdecode {text} {
+  # code below is neccessary to prevent numerous html markups
+  # from appearing in the output (ie, &quot;, &#5671;, etc)
+  # stolen (borrowed is a better term) from perplexa's urban
+  # dictionary script..
+  if {![string match *&* $text]} {return $text}
+  set escapes {
+               &nbsp; \xa0 &iexcl; \xa1 &cent; \xa2 &pound; \xa3 &curren; \xa4
+               &yen; \xa5 &brvbar; \xa6 &sect; \xa7 &uml; \xa8 &copy; \xa9
+               &ordf; \xaa &laquo; \xab &not; \xac &shy; \xad &reg; \xae
+               &macr; \xaf &deg; \xb0 &plusmn; \xb1 &sup2; \xb2 &sup3; \xb3
+               &acute; \xb4 &micro; \xb5 &para; \xb6 &middot; \xb7 &cedil; \xb8
+               &sup1; \xb9 &ordm; \xba &raquo; \xbb &frac14; \xbc &frac12; \xbd
+               &frac34; \xbe &iquest; \xbf &Agrave; \xc0 &Aacute; \xc1 &Acirc; \xc2
+               &Atilde; \xc3 &Auml; \xc4 &Aring; \xc5 &AElig; \xc6 &Ccedil; \xc7
+               &Egrave; \xc8 &Eacute; \xc9 &Ecirc; \xca &Euml; \xcb &Igrave; \xcc
+               &Iacute; \xcd &Icirc; \xce &Iuml; \xcf &ETH; \xd0 &Ntilde; \xd1
+               &Ograve; \xd2 &Oacute; \xd3 &Ocirc; \xd4 &Otilde; \xd5 &Ouml; \xd6
+               &times; \xd7 &Oslash; \xd8 &Ugrave; \xd9 &Uacute; \xda &Ucirc; \xdb
+               &Uuml; \xdc &Yacute; \xdd &THORN; \xde &szlig; \xdf &agrave; \xe0
+               &aacute; \xe1 &acirc; \xe2 &atilde; \xe3 &auml; \xe4 &aring; \xe5
+               &aelig; \xe6 &ccedil; \xe7 &egrave; \xe8 &eacute; \xe9 &ecirc; \xea
+               &euml; \xeb &igrave; \xec &iacute; \xed &icirc; \xee &iuml; \xef
+               &eth; \xf0 &ntilde; \xf1 &ograve; \xf2 &oacute; \xf3 &ocirc; \xf4
+               &otilde; \xf5 &ouml; \xf6 &divide; \xf7 &oslash; \xf8 &ugrave; \xf9
+               &uacute; \xfa &ucirc; \xfb &uuml; \xfc &yacute; \xfd &thorn; \xfe
+               &yuml; \xff &fnof; \u192 &Alpha; \u391 &Beta; \u392 &Gamma; \u393 &Delta; \u394
+               &Epsilon; \u395 &Zeta; \u396 &Eta; \u397 &Theta; \u398 &Iota; \u399
+               &Kappa; \u39A &Lambda; \u39B &Mu; \u39C &Nu; \u39D &Xi; \u39E
+               &Omicron; \u39F &Pi; \u3A0 &Rho; \u3A1 &Sigma; \u3A3 &Tau; \u3A4
+               &Upsilon; \u3A5 &Phi; \u3A6 &Chi; \u3A7 &Psi; \u3A8 &Omega; \u3A9
+               &alpha; \u3B1 &beta; \u3B2 &gamma; \u3B3 &delta; \u3B4 &epsilon; \u3B5
+               &zeta; \u3B6 &eta; \u3B7 &theta; \u3B8 &iota; \u3B9 &kappa; \u3BA
+               &lambda; \u3BB &mu; \u3BC &nu; \u3BD &xi; \u3BE &omicron; \u3BF
+               &pi; \u3C0 &rho; \u3C1 &sigmaf; \u3C2 &sigma; \u3C3 &tau; \u3C4
+               &upsilon; \u3C5 &phi; \u3C6 &chi; \u3C7 &psi; \u3C8 &omega; \u3C9
+               &thetasym; \u3D1 &upsih; \u3D2 &piv; \u3D6 &bull; \u2022
+               &hellip; \u2026 &prime; \u2032 &Prime; \u2033 &oline; \u203E
+               &frasl; \u2044 &weierp; \u2118 &image; \u2111 &real; \u211C
+               &trade; \u2122 &alefsym; \u2135 &larr; \u2190 &uarr; \u2191
+               &rarr; \u2192 &darr; \u2193 &harr; \u2194 &crarr; \u21B5
+               &lArr; \u21D0 &uArr; \u21D1 &rArr; \u21D2 &dArr; \u21D3 &hArr; \u21D4
+               &forall; \u2200 &part; \u2202 &exist; \u2203 &empty; \u2205
+               &nabla; \u2207 &isin; \u2208 &notin; \u2209 &ni; \u220B &prod; \u220F
+               &sum; \u2211 &minus; \u2212 &lowast; \u2217 &radic; \u221A
+               &prop; \u221D &infin; \u221E &ang; \u2220 &and; \u2227 &or; \u2228
+               &cap; \u2229 &cup; \u222A &int; \u222B &there4; \u2234 &sim; \u223C
+               &cong; \u2245 &asymp; \u2248 &ne; \u2260 &equiv; \u2261 &le; \u2264
+               &ge; \u2265 &sub; \u2282 &sup; \u2283 &nsub; \u2284 &sube; \u2286
+               &supe; \u2287 &oplus; \u2295 &otimes; \u2297 &perp; \u22A5
+               &sdot; \u22C5 &lceil; \u2308 &rceil; \u2309 &lfloor; \u230A
+               &rfloor; \u230B &lang; \u2329 &rang; \u232A &loz; \u25CA
+               &spades; \u2660 &clubs; \u2663 &hearts; \u2665 &diams; \u2666
+               &quot; \x22 &amp; \x26 &lt; \x3C &gt; \x3E O&Elig; \u152 &oelig; \u153
+               &Scaron; \u160 &scaron; \u161 &Yuml; \u178 &circ; \u2C6
+               &tilde; \u2DC &ensp; \u2002 &emsp; \u2003 &thinsp; \u2009
+               &zwnj; \u200C &zwj; \u200D &lrm; \u200E &rlm; \u200F &ndash; \u2013
+               &mdash; \u2014 &lsquo; \u2018 &rsquo; \u2019 &sbquo; \u201A
+               &ldquo; \u201C &rdquo; \u201D &bdquo; \u201E &dagger; \u2020
+               &Dagger; \u2021 &permil; \u2030 &lsaquo; \u2039 &rsaquo; \u203A
+               &euro; \u20AC &apos; \u0027 &lrm; "" &rlm; "" &#8236; "" &#8237; ""
+               &#8238; "" &#8212; \u2014
+  };
+  set text [string map [list "\]" "\\\]" "\[" "\\\[" "\$" "\\\$" "\\" "\\\\"] [string map $escapes $text]]
+  regsub -all -- {&#([[:digit:]]{1,5});} $text {[format %c [string trimleft "\1" "0"]]} text
+  regsub -all -- {&#x([[:xdigit:]]{1,4});} $text {[format %c [scan "\1" %x]]} text
+  regsub -all -- {\\x([[:xdigit:]]{1,2})} $text {[format %c [scan "\1" %x]]} text
+  set text [subst "$text"]
+  return $text
+}
 }
