@@ -12,6 +12,9 @@
 #               .rss <add|del|list> [name:#chan] - from partyline     #
 #                                                                     #
 #######################################################################
+
+package require Tcl 8.3
+package require eggdrop 1.6
 package require http 2.0
 
 namespace eval rssnews {
@@ -19,7 +22,7 @@ namespace eval rssnews {
 # set your feed(s) sources here: feed name, channel, poll frequency in mins, feed URL
 #
 #set feeds(osnews:#chan1) {17 http://www.osnews.com/files/recent.rdf}
-set feeds(google:#dukelovett) {5 http://news.google.com/news?ned=us&topic=h&output=rss}
+set feeds(google:#dukelovett) {1 http://news.google.com/news?ned=us&topic=h&output=rss}
 #
 # if you have to use password-protected feed, set it up like this:
 #
@@ -154,14 +157,13 @@ proc process {data chanfeed} {
 		if {![info exists descr]} {set descr "(none)"}
 		if {[info exists hash($chanfeed)]} {
 		if {[lsearch -exact $hash($chanfeed) [md5 $title]] == -1 && [botonchan $chan]} {
-			
 			if {![info exists header]} {
 				if {$infoline == ""} {set header $feed} {set header $infoline}
 				set header [unhtml $header]
 				puthelp "privmsg $chan :\002Breaking news\002: $header!"
 			}
 			if {$count < $maxnew} {
-				puthelp "privmsg $chan :($idx) $title"
+				puthelp "privmsg $chan :($idx) $title ~ $link"
 				incr count
 			} {
 				lappend indices $idx
@@ -178,6 +180,7 @@ proc process {data chanfeed} {
 	}
 	set hash($chanfeed) $hashes
 }
+
 
 proc rss {hand idx text} {
 	variable feeds
@@ -320,9 +323,6 @@ proc b64en str {
 	} $bits]$tail
 }
 
-################################################################################
-# Unhtml & webby descdecode borrowed from webby script                         #
-################################################################################
 proc unhtml {text} {
   regsub -all "(?:<b>|</b>|<b />|<em>|</em>|<strong>|</strong>)" $text "\002" text
   regsub -all "(?:<u>|</u>|<u />)" $text "\037" text
