@@ -51,7 +51,7 @@ variable reqcert yes:no
 #######################################################################
 # nothing to edit below
 
-variable version "rssnews-2.2"
+variable version "drss 0.1.1"
 
 if {$usessl} {
 	package require tls 1.5
@@ -64,6 +64,7 @@ if {$usessl} {
 
 bind dcc  m rss   [namespace current]::rss
 bind pub  - !news [namespace current]::news
+bind pub  - !rss [namespace current]::news
 bind time - *     [namespace current]::timer
 
 putlog "$version by demond loaded"
@@ -160,10 +161,10 @@ proc process {data chanfeed} {
 			if {![info exists header]} {
 				if {$infoline == ""} {set header $feed} {set header $infoline}
 				set header [unhtml $header]
-				puthelp "privmsg $chan :\002Breaking news\002: $header!"
+				puthelp "notice $chan :\002Breaking news\002: $header!"
 			}
 			if {$count < $maxnew} {
-				puthelp "privmsg $chan :($idx) $title ~ $link"
+				puthelp "notice $chan :($idx) $title ~ $link"
 				incr count
 			} {
 				lappend indices $idx
@@ -176,7 +177,7 @@ proc process {data chanfeed} {
 	if {[info exists indices] && [botonchan $chan]} {
 		set count [llength $indices]
 		set indices "(indices: [join $indices {, }])"
-		puthelp "privmsg $chan :...and $count more $indices" 
+		puthelp "notice $chan :...and $count more $indices" 
 	}
 	set hash($chanfeed) $hashes
 }
@@ -258,15 +259,15 @@ proc news {nick uhost hand chan text} {
 		}
 		if {[info exists names]} {
 			set names [join $names {, }]
-			puthelp "notice $nick :feed(s) for $chan: $names"
-			puthelp "notice $nick :type $::lastbind <feed> \[index#\]"
+			puthelp "notice $chan :feed(s) for $chan: $names"
+			puthelp "notice $chan :type $::lastbind <feed> \[index#\]"
 		} {
-			puthelp "notice $nick :no feed(s) for $chan"
+			puthelp "notice $chan :no feed(s) for $chan"
 		}
 		return 1
 	}
 	if {![info exists news($feed:$chan)]} {
-		puthelp "notice $nick :no news from $feed on $chan"
+		puthelp "notice $chan :no news from $feed on $chan"
 		return 1
 	}
 	if {$num == ""} {
@@ -277,24 +278,24 @@ proc news {nick uhost hand chan text} {
 			set title [lindex $feeds($feed:$chan) 1]
 		}
 		set title [unhtml $title]
-		puthelp "notice $nick :News source: \002$title\002"
+		puthelp "notice $chan :News source: \002$title\002"
 		foreach item $news($feed:$chan) {
-			puthelp "notice $nick :($idx) [lindex $item 0]"
+			puthelp "notice $chan:($idx) [lindex $item 0]"
 			incr idx
 		}
 		return 1
 	} elseif {![string is integer $num]} {
-		puthelp "notice $nick :news index must be number"
+		puthelp "notice $chan :news index must be number"
 		return 1
 	}
 	if {$num < 1 || $num > [llength $news($feed:$chan)]} {
-		puthelp "notice $nick :no such news index, try $::lastbind $feed"
+		puthelp "notice $chan:no such news index, try $::lastbind $feed"
 		return 1
 	} {
 		set idx [expr {$num-1}]
-		puthelp "notice $nick :......title($num): [lindex [lindex $news($feed:$chan) $idx] 0]"
-		puthelp "notice $nick :description($num): [lindex [lindex $news($feed:$chan) $idx] 2]"
-		puthelp "notice $nick :.......link($num): [lindex [lindex $news($feed:$chan) $idx] 1]"
+		puthelp "notice $chan :......title($num): [lindex [lindex $news($feed:$chan) $idx] 0]"
+		puthelp "notice $chan :description($num): [lindex [lindex $news($feed:$chan) $idx] 2]"
+		puthelp "notice $chan :.......link($num): [lindex [lindex $news($feed:$chan) $idx] 1]"
 		return 1
 	}
 }
