@@ -1,29 +1,34 @@
-#######################################################################
-#                                                                     #
-# rssnews.tcl - RSS news announcer for eggdrop by demond@demond.net   #
-#                                                                     #
-#               this will announce the updated news from RSS feed(s), #
-#               periodically polling the feed(s); supports multiple   #
-#               channels/multiple feeds per channel; you only need to #
-#               set up your feeds array, see below; secure (SSL) and  #
-#               private (password-protected) feeds are also supported #
-#                                                                     #
-#        Usage: !news <feed name> [news index #] - from channel       # 
-#               .rss <add|del|list> [name:#chan] - from partyline     #
-#                                                                     #
-#######################################################################
-
+################################################################################
+# Drss script is a fork of rssnews.tcl by lee8oi@gmail.com                     #
+################################################################################
+#!!!!!!!!!!!!!!!!!!!!!!! Original rssnews header !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+#######################################################################!!!!!!!!#
+#                                                                     #!!!!!!!!#
+# rssnews.tcl - RSS news announcer for eggdrop by demond@demond.net   #!!!!!!!!#
+#                                                                     #!!!!!!!!#
+#               this will announce the updated news from RSS feed(s), #!!!!!!!!#
+#               periodically polling the feed(s); supports multiple   #!!!!!!!!#
+#               channels/multiple feeds per channel; you only need to #!!!!!!!!#
+#               set up your feeds array, see below; secure (SSL) and  #!!!!!!!!#
+#               private (password-protected) feeds are also supported #!!!!!!!!#
+#                                                                     #!!!!!!!!#
+#        Usage: !news <feed name> [news index #] - from channel       #!!!!!!!!#
+#               .rss <add|del|list> [name:#chan] - from partyline     #!!!!!!!!#
+#                                                                     #!!!!!!!!#
+#######################################################################!!!!!!!!#
+#!!!!!!!!!!!!!!!!!!!!!!!! Original rssnews header !!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+################################################################################
 package require Tcl 8.3
 package require eggdrop 1.6
 package require http 2.0
 
-namespace eval rssnews {
+namespace eval drss {
 
 # set your feed(s) sources here: feed name, channel, poll frequency in mins, feed URL
 #
 #set feeds(osnews:#chan1) {17 http://www.osnews.com/files/recent.rdf}
-set feeds(google:#dukelovett) {1 http://news.google.com/news?ned=us&topic=h&output=rss}
-#
+#set feeds(google:#chan2) {11 http://news.google.com/news?ned=us&topic=h&output=rss}
+#set feeds(linuxtoday:#mageia-social) {10 http://feeds.feedburner.com/linuxtoday/linux?format=xml}
 # if you have to use password-protected feed, set it up like this:
 #
 #set feeds(name3:#chan3) {13 http://some.site.com/feed username password}
@@ -51,7 +56,7 @@ variable reqcert yes:no
 #######################################################################
 # nothing to edit below
 
-variable version "drss 0.1.1"
+variable version "drss-0.1.1"
 
 if {$usessl} {
 	package require tls 1.5
@@ -62,12 +67,12 @@ if {$usessl} {
 	::http::register https 443 $ssl
 }
 
-bind dcc  m rss   [namespace current]::rss
-bind pub  - !news [namespace current]::news
-bind pub  - !rss [namespace current]::news
+bind dcc m rss   [namespace current]::rss
+bind pub - !news [namespace current]::news
+bind pub - !rss [namespace current]::news
 bind time - *     [namespace current]::timer
 
-putlog "$version by demond loaded"
+putlog "$version by lee8oi loaded"
 
 proc timer {min hour day month year} {
 	variable feeds
@@ -136,52 +141,55 @@ proc callback {t} {
 proc process {data chanfeed} {
 	variable news; variable hash
 	variable maxnew; variable source
-	set idx 1; set count 0
+	set idv 1; set count 0;
 	scan $chanfeed {%[^:]:%s} feed chan
 	set news($chanfeed) {}; set source($chanfeed) ""
 	set data [webbydescdecode $data]
-	if {[regexp {<title>(.*?)</title>} $data -> foo]} {
+	if {[regexp {(?i)<title>(.*?)</title>} $data -> foo]} {
 		append source($chanfeed) $foo
 	}
-	if {[regexp {<description>(.*?)</description>} $data -> foo]} {
+	if {[regexp {(?i)<description>(.*?)</description>} $data -> foo]} {
 		append source($chanfeed) " | $foo"
 	}
 	set infoline $source($chanfeed)
 	regsub -all {(?i)<items.*?>.*?</items>} $data {} data
 	foreach {foo item} [regexp -all -inline {(?i)<item.*?>(.*?)</item>} $data] {
-		regexp {(?i)<title.*?>(.*?)</title>}  $item titsub1 title 
-		regexp {(?i)<link>(.*?)</link>}     $item linsub1 link
-		regexp {(?i)<description>(.*?)</description} $item dessub1 descr
-		set descr [unhtml $descr]; set title [unhtml $title]; set link [unhtml $link]
+		regexp {(?i)<title.*?>(.*?)</title>}  $item -> title
+		regexp {(?i)<link.*?>(.*?)</link}     $item -> link
+		regexp {(?i)<desc.*?>(.*?)</desc.*?>} $item -> descr
+		set title [unhtml $title]; set link [unhtml $link]; set descr [unhtml $descr]
 		if {![info exists title]} {set title "(none)"}
 		if {![info exists link]}  {set link  "(none)"}
 		if {![info exists descr]} {set descr "(none)"}
 		if {[info exists hash($chanfeed)]} {
 		if {[lsearch -exact $hash($chanfeed) [md5 $title]] == -1 && [botonchan $chan]} {
-			if {![info exists header]} {
-				if {$infoline == ""} {set header $feed} {set header $infoline}
-				set header [unhtml $header]
-				puthelp "notice $chan :\002Breaking news\002: $header!"
-			}
+			
+			#if {![info exists header]} {
+			#	puthelp "notice $chan :\002Breaking news\002 from the $feed feed."
+			#	if {$infoline == ""} {set header $feed} {set header $infoline}
+			#	set header [unhtml $header]
+			#	#puthelp "notice $chan :\002Breaking news\002: $title ~ $link"
+			#}
 			if {$count < $maxnew} {
-				puthelp "notice $chan :($idx) $title ~ $link"
+				set link "[webbytiny $link 5]"
+				puthelp "notice $chan :~$feed $idv~ $title ~ $link"
 				incr count
 			} {
-				lappend indices $idx
+				lappend indices $idv
 			}
 		}}
 		lappend news($chanfeed) [list $title $link $descr]
 		lappend hashes [md5 $title]
-		incr idx
+		incr idv
 	}
 	if {[info exists indices] && [botonchan $chan]} {
 		set count [llength $indices]
 		set indices "(indices: [join $indices {, }])"
-		puthelp "notice $chan :...and $count more $indices" 
+		puthelp "notice $chan :...and $count more $indices"
+		set indices 0
 	}
 	set hash($chanfeed) $hashes
 }
-
 
 proc rss {hand idx text} {
 	variable feeds
@@ -250,6 +258,7 @@ proc news {nick uhost hand chan text} {
 	set pcount [list $ts $n]
 	set num [lindex [split $text] 1]
 	set feed [lindex [split $text] 0]
+	set text [unhtml $text]
 	if {$text == ""} {
 		foreach {key value} [array get feeds] {
 			scan $key {%[^:]:%s} name channel
@@ -259,15 +268,15 @@ proc news {nick uhost hand chan text} {
 		}
 		if {[info exists names]} {
 			set names [join $names {, }]
-			puthelp "notice $chan :feed(s) for $chan: $names"
-			puthelp "notice $chan :type $::lastbind <feed> \[index#\]"
+			puthelp "notice $nick :feed(s) for $chan: $names"
+			puthelp "notice $nick :type $::lastbind <feed> \[index#\]"
 		} {
-			puthelp "notice $chan :no feed(s) for $chan"
+			puthelp "notice $nick :no feed(s) for $chan"
 		}
 		return 1
 	}
 	if {![info exists news($feed:$chan)]} {
-		puthelp "notice $chan :no news from $feed on $chan"
+		puthelp "notice $nick :no news from $feed on $chan"
 		return 1
 	}
 	if {$num == ""} {
@@ -277,10 +286,12 @@ proc news {nick uhost hand chan text} {
 		} {
 			set title [lindex $feeds($feed:$chan) 1]
 		}
+		putlog "feeds(feed:chan) 2 is: [lindex $feeds($feed:$chan) 0]"
 		set title [unhtml $title]
-		puthelp "notice $chan :News source: \002$title\002"
+		#puthelp "notice $chan :News source: \002$title\002"
 		foreach item $news($feed:$chan) {
-			puthelp "notice $chan:($idx) [lindex $item 0]"
+			set link "[webbytiny [lindex $item 1] 5]"
+			puthelp "notice $nick :~$feed~$idx~ [lindex $item 0] ~ $link"
 			incr idx
 		}
 		return 1
@@ -289,13 +300,13 @@ proc news {nick uhost hand chan text} {
 		return 1
 	}
 	if {$num < 1 || $num > [llength $news($feed:$chan)]} {
-		puthelp "notice $chan:no such news index, try $::lastbind $feed"
+		puthelp "notice $nick :no such news index, try $::lastbind $feed"
 		return 1
 	} {
 		set idx [expr {$num-1}]
-		puthelp "notice $chan :......title($num): [lindex [lindex $news($feed:$chan) $idx] 0]"
-		puthelp "notice $chan :description($num): [lindex [lindex $news($feed:$chan) $idx] 2]"
-		puthelp "notice $chan :.......link($num): [lindex [lindex $news($feed:$chan) $idx] 1]"
+		puthelp "notice $nick :~title~$num~ [lindex [lindex $news($feed:$chan) $idx] 0]"
+		puthelp "notice $nick :~description~ [lindex [lindex $news($feed:$chan) $idx] 2]"
+		puthelp "notice $nick :~link~ [lindex [lindex $news($feed:$chan) $idx] 1]"
 		return 1
 	}
 }
@@ -323,7 +334,30 @@ proc b64en str {
 		111100 8 111101 9 111110 + 111111 /
 	} $bits]$tail
 }
-
+proc webbytiny {url type} {
+  set ua "Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.5) Gecko/2008120122 Firefox/3.0.5"
+  set http [::http::config -useragent $ua -urlencoding "utf-8"]
+  switch -- $type {
+    4 { set type [rand 4] }
+    5 { if {![info exists ::webbyCount]} {
+          set ::webbyCount 0
+          set type 0
+        } else {
+          set type [expr {[incr ::webbyCount] % 4}]
+        }
+      }
+  } 
+  switch -- $type {
+    0 { set query "http://tinyurl.com/api-create.php?[http::formatQuery url $url]" }
+    1 { set query "http://is.gd/api.php?[http::formatQuery longurl $url]" }
+    2 { set query "http://is.gd/api.php?[http::formatQuery longurl $url]" }
+    3 { set query "http://is.gd/api.php?[http::formatQuery longurl $url]" }
+  }
+  set token [http::geturl $query -timeout 3000]
+  upvar #0 $token state
+  if {[string length $state(body)]} { return [string map {"\n" ""} $state(body)] }
+  return $url
+}
 proc unhtml {text} {
   regsub -all "(?:<b>|</b>|<b />|<em>|</em>|<strong>|</strong>)" $text "\002" text
   regsub -all "(?:<u>|</u>|<u />)" $text "\037" text
